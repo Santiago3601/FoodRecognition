@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:food_recognition/screens/review_screen.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
@@ -11,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Image Upload Example',
+      title: 'Image Upload App',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -26,84 +28,155 @@ class ImageUploadScreen extends StatefulWidget {
 }
 
 class _ImageUploadScreenState extends State<ImageUploadScreen> {
-  final picker = ImagePicker();
-  File? _image;
+  List<File> _images = [];
 
-  Future getImageFromCamera() async {
-    final pickedFile = await picker.getImage(source: ImageSource.camera);
+  Future<void> _getImageFromCamera() async {
+    final image = await ImagePicker().pickImage(source: ImageSource.camera);
+    if (image != null) {
+      setState(() {
+        _images.add(File(image.path));
+      });
+    }
+  }
 
+  Future<void> _getImageFromGallery() async {
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        _images.add(File(image.path));
+      });
+    }
+  }
+
+  void _removeImage(int index) {
     setState(() {
-      if (pickedFile != null) {
-        _image = File(pickedFile.path);
-      } else {
-        print('No image selected.');
-      }
+      _images.removeAt(index);
     });
   }
 
-  Future getImageFromGallery() async {
-    final pickedFile = await picker.getImage(source: ImageSource.gallery);
-
-    setState(() {
-      if (pickedFile != null) {
-        _image = File(pickedFile.path);
-      } else {
-        print('No image selected.');
-      }
-    });
+  bool _isNextButtonEnabled() {
+    return _images.isNotEmpty;
   }
 
-  Future uploadImage() async {
-    if (_image == null) {
-      print('No image selected.');
-      return;
+  Future<void> _copyImagesToAssets() async {
+    final Directory appDocDir = await getApplicationDocumentsDirectory();
+    final String assetsDirPath = '${appDocDir.path}/assets/images/toUpload';
+
+    // Create assets/images directory if it doesn't exist
+    final Directory assetsDir = Directory(assetsDirPath);
+    if (!await assetsDir.exists()) {
+      await assetsDir.create(recursive: true);
     }
 
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('YOUR_API_ENDPOINT'),
+    for (int i = 0; i < _images.length; i++) {
+      final String imageName = 'image_$i.jpg';
+      final File newImage = await _images[i].copy('$assetsDirPath/$imageName');
+    }
+
+    // Navigate to next screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => NextScreen()),
     );
-    request.files.add(await http.MultipartFile.fromPath('image', _image!.path));
-
-    var response = await request.send();
-
-    if (response.statusCode == 200) {
-      print('Image uploaded successfully');
-    } else {
-      print('Failed to upload image. Status code: ${response.statusCode}');
-    }
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Food Recognition App'),
+        title: Text('Image Upload'),
+        centerTitle: true,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            _image == null
-                ? Text('No image selected.')
-                : Image.file(_image!),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: getImageFromCamera,
-              child: Text('Take Photo'),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Text(
+              'Demo Food Recognition',
+              style: TextStyle(fontSize: 24.0),
             ),
-            ElevatedButton(
-              onPressed: getImageFromGallery,
-              child: Text('Choose from Gallery'),
+          ),
+          SizedBox(height: 150),
+          Expanded(
+            child: _images.isEmpty
+                ? Center(child: Text('Selecciona imagenes'))
+                : ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _images.length,
+              itemBuilder: (context, index) {
+                return Stack(
+                  children: [
+                    Container(
+                      margin: EdgeInsets.all(8.0),
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.0),
+                        image: DecorationImage(
+                          image: FileImage(_images[index]),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: IconButton(
+                        icon: Icon(Icons.delete_outline),
+                        onPressed: () {
+                          _removeImage(index);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: uploadImage,
-              child: Text('Upload Image'),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 200),
+            // Adjust max height as needed
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    ElevatedButton(
+                      onPressed: _getImageFromCamera,
+                      child: Text('Camera'),
+                    ),
+                    SizedBox(width: 50),
+                    ElevatedButton(
+                      onPressed: _getImageFromGallery,
+                      child: Text('Gallery'),
+                    )
+                  ]),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _isNextButtonEnabled()
+                            ? _copyImagesToAssets
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 16.0, horizontal: 24.0),
+                          child: Text(
+                            'Continuar',
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
+
